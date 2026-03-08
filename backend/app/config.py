@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     # 日志配置
     log_level: str = "INFO"
 
+    # 上下文压缩配置
+    context_recent_turns: int = 4
+    context_summary_trigger_turns: int = 6
+
     class Config:
         env_file = ".env"
         case_sensitive = False
@@ -105,4 +109,9 @@ def print_config():
     print(f"LLM API Key: {'已配置' if llm_api_key else '未配置'}")
     print(f"LLM Base URL: {llm_base_url}")
     print(f"LLM Model: {llm_model}")
+    print(
+        "上下文压缩: "
+        f"recent_turns={settings.context_recent_turns}, "
+        f"summary_trigger_turns={settings.context_summary_trigger_turns}"
+    )
     print(f"日志级别: {settings.log_level}")

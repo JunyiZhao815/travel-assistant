@@ -7,6 +7,12 @@ from datetime import date
 
 # ============ 请求模型 ============
 
+class ConversationTurn(BaseModel):
+    """对话轮次"""
+    role: str = Field(..., description="角色: user/assistant/system", example="user")
+    content: str = Field(..., description="对话内容", example="我预算2000，想去北京玩3天")
+
+
 class TripRequest(BaseModel):
     """旅行规划请求"""
     city: str = Field(..., description="目的地城市", example="北京")
@@ -15,8 +21,12 @@ class TripRequest(BaseModel):
     travel_days: int = Field(..., description="旅行天数", ge=1, le=30, example=3)
     transportation: str = Field(..., description="交通方式", example="公共交通")
     accommodation: str = Field(..., description="住宿偏好", example="经济型酒店")
-    preferences: List[str] = Field(default=[], description="旅行偏好标签", example=["历史文化", "美食"])
+    preferences: List[str] = Field(default_factory=list, description="旅行偏好标签", example=["历史文化", "美食"])
     free_text_input: Optional[str] = Field(default="", description="额外要求", example="希望多安排一些博物馆")
+    conversation_history: List[ConversationTurn] = Field(
+        default_factory=list,
+        description="可选的对话历史,用于上下文压缩与多轮规划"
+    )
     
     class Config:
         json_schema_extra = {
@@ -28,7 +38,12 @@ class TripRequest(BaseModel):
                 "transportation": "公共交通",
                 "accommodation": "经济型酒店",
                 "preferences": ["历史文化", "美食"],
-                "free_text_input": "希望多安排一些博物馆"
+                "free_text_input": "希望多安排一些博物馆",
+                "conversation_history": [
+                    {"role": "user", "content": "我预算2000，想去北京3天"},
+                    {"role": "assistant", "content": "好的，请问更偏好人文还是自然景点？"},
+                    {"role": "user", "content": "偏好历史文化和美食"}
+                ]
             }
         }
 
@@ -203,4 +218,3 @@ class ErrorResponse(BaseModel):
     success: bool = Field(default=False, description="是否成功")
     message: str = Field(..., description="错误消息")
     error_code: Optional[str] = Field(default=None, description="错误代码")
-

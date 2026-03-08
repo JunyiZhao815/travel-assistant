@@ -7,6 +7,7 @@ from hello_agents.tools import MCPTool
 from ..services.llm_service import get_llm
 from ..models.schemas import TripRequest, TripPlan, DayPlan, Attraction, Meal, WeatherInfo, Location, Hotel
 from ..config import get_settings
+from ..prompting import ContextCompressor
 
 # ============ Agent提示词 ============
 
@@ -162,6 +163,10 @@ class MultiAgentTripPlanner:
         try:
             settings = get_settings()
             self.llm = get_llm()
+            self.context_compressor = ContextCompressor(
+                recent_turns=settings.context_recent_turns,
+                summary_trigger_turns=settings.context_summary_trigger_turns,
+            )
 
             # 创建共享的MCP工具(只创建一次)
             print("  - 创建共享MCP工具...")
@@ -212,6 +217,10 @@ class MultiAgentTripPlanner:
             print(f"   景点搜索Agent: {len(self.attraction_agent.list_tools())} 个工具")
             print(f"   天气查询Agent: {len(self.weather_agent.list_tools())} 个工具")
             print(f"   酒店推荐Agent: {len(self.hotel_agent.list_tools())} 个工具")
+            print(
+                f"   上下文压缩: recent_turns={settings.context_recent_turns}, "
+                f"summary_trigger_turns={settings.context_summary_trigger_turns}"
+            )
 
         except Exception as e:
             print(f"❌ 多智能体系统初始化失败: {str(e)}")
@@ -258,7 +267,18 @@ class MultiAgentTripPlanner:
 
             # 步骤4: 行程规划Agent整合信息生成计划
             print("📋 步骤4: 生成行程计划...")
-            planner_query = self._build_planner_query(request, attraction_response, weather_response, hotel_response)
+            compressed_context = self.context_compressor.build_context(request.conversation_history)
+            print(
+                f"上下文压缩完成: 历史轮次={len(request.conversation_history)}, "
+                f"保留最近轮次={len(compressed_context['recent_turns'])}"
+            )
+            planner_query = self._build_planner_query(
+                request,
+                attraction_response,
+                weather_response,
+                hotel_response,
+                compressed_context,
+            )
             planner_response = self.planner_agent.run(planner_query)
             print(f"行程规划结果: {planner_response[:300]}...\n")
 
@@ -290,8 +310,27 @@ class MultiAgentTripPlanner:
         query = f"请使用amap_maps_text_search工具搜索{request.city}的{keywords}相关景点。\n[TOOL_CALL:amap_maps_text_search:keywords={keywords},city={request.city}]"
         return query
 
-    def _build_planner_query(self, request: TripRequest, attractions: str, weather: str, hotels: str = "") -> str:
+    def _build_planner_query(
+        self,
+        request: TripRequest,
+        attractions: str,
+        weather: str,
+        hotels: str = "",
+        compressed_context: Dict[str, Any] | None = None,
+    ) -> str:
         """构建行程规划查询"""
+        context_block = ""
+        if compressed_context:
+            summary = compressed_context.get("summary", {})
+            recent_turns = compressed_context.get("recent_turns", [])
+            context_block = f"""
+**上下文压缩摘要:**
+{json.dumps(summary, ensure_ascii=False, indent=2)}
+
+**最近对话原文({len(recent_turns)}轮):**
+{json.dumps(recent_turns, ensure_ascii=False, indent=2)}
+"""
+
         query = f"""请根据以下信息生成{request.city}的{request.travel_days}天旅行计划:
 
 **基本信息:**
@@ -310,6 +349,7 @@ class MultiAgentTripPlanner:
 
 **酒店信息:**
 {hotels}
+{context_block}
 
 **要求:**
 1. 每天安排2-3个景点
@@ -426,4 +466,3 @@ def get_trip_planner_agent() -> MultiAgentTripPlanner:
         _multi_agent_planner = MultiAgentTripPlanner()
 
     return _multi_agent_planner
-
