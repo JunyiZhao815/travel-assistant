@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     rag_top_k: int = 3
     rag_knowledge_path: str = "knowledge/local_trip_knowledge.json"
 
+    # 冲突指令消解配置
+    instruction_conflict_guard_enabled: bool = True
+
     class Config:
         env_file = ".env"
         case_sensitive = False
@@ -125,4 +128,5 @@ def print_config():
         f"top_k={settings.rag_top_k}, "
         f"path={settings.rag_knowledge_path}"
     )
+    print(f"冲突指令消解: enabled={settings.instruction_conflict_guard_enabled}")
     print(f"日志级别: {settings.log_level}")

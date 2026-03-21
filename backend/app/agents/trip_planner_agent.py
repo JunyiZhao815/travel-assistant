@@ -7,7 +7,7 @@ from hello_agents.tools import MCPTool
 from ..services.llm_service import get_llm
 from ..models.schemas import TripRequest, TripPlan, DayPlan, Attraction, Meal, WeatherInfo, Location, Hotel
 from ..config import get_settings
-from ..prompting import ContextCompressor
+from ..prompting import ContextCompressor, InstructionResolver
 from ..retrieval import RAGInjector
 
 # ============ Agent提示词 ============
@@ -168,6 +168,7 @@ class MultiAgentTripPlanner:
                 recent_turns=settings.context_recent_turns,
                 summary_trigger_turns=settings.context_summary_trigger_turns,
             )
+            self.instruction_resolver = InstructionResolver()
             self.rag_enabled = settings.rag_enabled
             self.rag_injector = RAGInjector(
                 knowledge_path=settings.rag_knowledge_path,
@@ -231,6 +232,7 @@ class MultiAgentTripPlanner:
                 f"   RAG: enabled={settings.rag_enabled}, "
                 f"top_k={settings.rag_top_k}, path={settings.rag_knowledge_path}"
             )
+            print(f"   冲突指令消解: enabled={settings.instruction_conflict_guard_enabled}")
 
         except Exception as e:
             print(f"❌ 多智能体系统初始化失败: {str(e)}")
@@ -349,6 +351,8 @@ class MultiAgentTripPlanner:
 {json.dumps(recent_turns, ensure_ascii=False, indent=2)}
 """
 
+        instruction_block = self._build_instruction_block(request, rag_block)
+
         query = f"""请根据以下信息生成{request.city}的{request.travel_days}天旅行计划:
 
 **基本信息:**
@@ -369,6 +373,7 @@ class MultiAgentTripPlanner:
 {hotels}
 {context_block}
 {rag_block}
+{instruction_block}
 
 **要求:**
 1. 每天安排2-3个景点
@@ -382,6 +387,47 @@ class MultiAgentTripPlanner:
             query += f"\n**额外要求:** {request.free_text_input}"
 
         return query
+
+    def _build_instruction_block(self, request: TripRequest, rag_block: str) -> str:
+        settings = get_settings()
+        if not settings.instruction_conflict_guard_enabled:
+            return ""
+
+        system_rules = [
+            "必须返回可解析的JSON格式",
+            "必须包含weather_info且覆盖每一天",
+            "每天必须包含早中晚三餐",
+            "必须包含预算字段并汇总total",
+            "知识不足时不得编造，需明确不确定性",
+        ]
+        developer_rules = [
+            "优先依据工具结果和RAG知识片段生成计划",
+            "行程密度建议每天2-3个景点",
+        ]
+        user_rules = [request.free_text_input] if request.free_text_input else []
+        retrieved_rules = [rag_block] if rag_block else []
+
+        resolved = self.instruction_resolver.resolve(
+            system_rules=system_rules,
+            developer_rules=developer_rules,
+            user_rules=user_rules,
+            retrieved_rules=retrieved_rules,
+        )
+
+        conflicts = resolved.get("conflicts", [])
+        if conflicts:
+            print("⚠️  检测到冲突指令,已按优先级裁决:")
+            for item in conflicts[:5]:
+                print(f"   - [{item['layer']}] {item['reason']}: {item['directive'][:80]}")
+            if len(conflicts) > 5:
+                print(f"   ... 还有 {len(conflicts) - 5} 条冲突")
+
+        effective_rules = resolved.get("effective_rules", [])
+        if not effective_rules:
+            return ""
+
+        formatted = "\n".join([f"{idx}. {rule}" for idx, rule in enumerate(effective_rules, start=1)])
+        return f"\n**冲突消解后的生效指令:**\n{formatted}\n"
     
     def _parse_response(self, response: str, request: TripRequest) -> TripPlan:
         """
