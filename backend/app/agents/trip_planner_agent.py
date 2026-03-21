@@ -8,6 +8,7 @@ from ..services.llm_service import get_llm
 from ..models.schemas import TripRequest, TripPlan, DayPlan, Attraction, Meal, WeatherInfo, Location, Hotel
 from ..config import get_settings
 from ..prompting import ContextCompressor
+from ..retrieval import RAGInjector
 
 # ============ Agent提示词 ============
 
@@ -167,6 +168,11 @@ class MultiAgentTripPlanner:
                 recent_turns=settings.context_recent_turns,
                 summary_trigger_turns=settings.context_summary_trigger_turns,
             )
+            self.rag_enabled = settings.rag_enabled
+            self.rag_injector = RAGInjector(
+                knowledge_path=settings.rag_knowledge_path,
+                top_k=settings.rag_top_k,
+            ) if self.rag_enabled else None
 
             # 创建共享的MCP工具(只创建一次)
             print("  - 创建共享MCP工具...")
@@ -221,6 +227,10 @@ class MultiAgentTripPlanner:
                 f"   上下文压缩: recent_turns={settings.context_recent_turns}, "
                 f"summary_trigger_turns={settings.context_summary_trigger_turns}"
             )
+            print(
+                f"   RAG: enabled={settings.rag_enabled}, "
+                f"top_k={settings.rag_top_k}, path={settings.rag_knowledge_path}"
+            )
 
         except Exception as e:
             print(f"❌ 多智能体系统初始化失败: {str(e)}")
@@ -272,12 +282,19 @@ class MultiAgentTripPlanner:
                 f"上下文压缩完成: 历史轮次={len(request.conversation_history)}, "
                 f"保留最近轮次={len(compressed_context['recent_turns'])}"
             )
+            retrieved_knowledge = []
+            rag_block = ""
+            if self.rag_enabled and self.rag_injector:
+                retrieved_knowledge = self.rag_injector.retrieve(request, compressed_context)
+                rag_block = self.rag_injector.build_prompt_block(retrieved_knowledge)
+            print(f"RAG检索完成: 命中知识条目={len(retrieved_knowledge)}")
             planner_query = self._build_planner_query(
                 request,
                 attraction_response,
                 weather_response,
                 hotel_response,
                 compressed_context,
+                rag_block,
             )
             planner_response = self.planner_agent.run(planner_query)
             print(f"行程规划结果: {planner_response[:300]}...\n")
@@ -317,6 +334,7 @@ class MultiAgentTripPlanner:
         weather: str,
         hotels: str = "",
         compressed_context: Dict[str, Any] | None = None,
+        rag_block: str = "",
     ) -> str:
         """构建行程规划查询"""
         context_block = ""
@@ -350,6 +368,7 @@ class MultiAgentTripPlanner:
 **酒店信息:**
 {hotels}
 {context_block}
+{rag_block}
 
 **要求:**
 1. 每天安排2-3个景点

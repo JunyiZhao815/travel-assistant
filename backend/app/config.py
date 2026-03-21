@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     context_recent_turns: int = 4
     context_summary_trigger_turns: int = 6
 
+    # RAG配置
+    rag_enabled: bool = True
+    rag_top_k: int = 3
+    rag_knowledge_path: str = "knowledge/local_trip_knowledge.json"
+
     class Config:
         env_file = ".env"
         case_sensitive = False
@@ -113,5 +118,11 @@ def print_config():
         "上下文压缩: "
         f"recent_turns={settings.context_recent_turns}, "
         f"summary_trigger_turns={settings.context_summary_trigger_turns}"
+    )
+    print(
+        "RAG配置: "
+        f"enabled={settings.rag_enabled}, "
+        f"top_k={settings.rag_top_k}, "
+        f"path={settings.rag_knowledge_path}"
     )
     print(f"日志级别: {settings.log_level}")

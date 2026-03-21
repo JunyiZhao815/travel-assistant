@@ -1,0 +1,52 @@
+[
+  {
+    "id": "trip_rule_001",
+    "title": "行程密度控制",
+    "content": "3天行程建议每天2-3个核心景点，避免跨城奔波。单个景点建议预留90-180分钟。",
+    "tags": ["行程", "节奏", "景点安排"],
+    "source": "ops_playbook",
+    "version": "2026.03.01",
+    "timestamp": "2026-03-01",
+    "confidence": 0.95
+  },
+  {
+    "id": "trip_rule_002",
+    "title": "预算分配基线",
+    "content": "城市短途旅行预算可按酒店45%、餐饮25%、交通15%、门票15%分配，再按偏好动态调整。",
+    "tags": ["预算", "费用", "成本"],
+    "source": "finance_guideline",
+    "version": "2026.02.20",
+    "timestamp": "2026-02-20",
+    "confidence": 0.9
+  },
+  {
+    "id": "trip_rule_003",
+    "title": "天气影响规则",
+    "content": "若存在降雨或大风，优先安排室内景点并降低步行距离；户外景点可调至天气较好时段。",
+    "tags": ["天气", "路线调整", "风控"],
+    "source": "travel_rulebook",
+    "version": "2026.01.15",
+    "timestamp": "2026-01-15",
+    "confidence": 0.92
+  },
+  {
+    "id": "trip_rule_004",
+    "title": "公共交通优先策略",
+    "content": "选择公共交通时，优先按地铁主干线聚类景点，同天景点尽量保持在相邻区域，减少换乘次数。",
+    "tags": ["交通", "地铁", "效率"],
+    "source": "routing_guideline",
+    "version": "2026.02.01",
+    "timestamp": "2026-02-01",
+    "confidence": 0.88
+  },
+  {
+    "id": "trip_rule_005",
+    "title": "酒店选址规则",
+    "content": "酒店优先选择在首日和次日主要景点的几何中点附近，兼顾地铁站和夜间餐饮可达性。",
+    "tags": ["酒店", "选址", "可达性"],
+    "source": "hotel_policy",
+    "version": "2026.02.10",
+    "timestamp": "2026-02-10",
+    "confidence": 0.87
+  }
+]
