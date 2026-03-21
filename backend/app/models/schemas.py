@@ -15,6 +15,7 @@ class ConversationTurn(BaseModel):
 
 class TripRequest(BaseModel):
     """旅行规划请求"""
+    session_id: Optional[str] = Field(default="", description="会话ID,用于短期记忆", example="sess_001")
     city: str = Field(..., description="目的地城市", example="北京")
     start_date: str = Field(..., description="开始日期 YYYY-MM-DD", example="2025-06-01")
     end_date: str = Field(..., description="结束日期 YYYY-MM-DD", example="2025-06-03")
@@ -31,6 +32,7 @@ class TripRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
+                "session_id": "sess_001",
                 "city": "北京",
                 "start_date": "2025-06-01",
                 "end_date": "2025-06-03",

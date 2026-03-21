@@ -9,6 +9,7 @@ from ..models.schemas import TripRequest, TripPlan, DayPlan, Attraction, Meal, W
 from ..config import get_settings
 from ..prompting import ContextCompressor, InstructionResolver
 from ..retrieval import RAGInjector
+from ..memory import get_session_memory_service
 
 # ============ Agent提示词 ============
 
@@ -174,6 +175,10 @@ class MultiAgentTripPlanner:
                 knowledge_path=settings.rag_knowledge_path,
                 top_k=settings.rag_top_k,
             ) if self.rag_enabled else None
+            self.session_memory_enabled = settings.session_memory_enabled
+            self.session_memory = get_session_memory_service(
+                ttl_minutes=settings.session_memory_ttl_minutes
+            ) if self.session_memory_enabled else None
 
             # 创建共享的MCP工具(只创建一次)
             print("  - 创建共享MCP工具...")
@@ -233,6 +238,10 @@ class MultiAgentTripPlanner:
                 f"top_k={settings.rag_top_k}, path={settings.rag_knowledge_path}"
             )
             print(f"   冲突指令消解: enabled={settings.instruction_conflict_guard_enabled}")
+            print(
+                f"   短期会话记忆: enabled={settings.session_memory_enabled}, "
+                f"ttl_minutes={settings.session_memory_ttl_minutes}"
+            )
 
         except Exception as e:
             print(f"❌ 多智能体系统初始化失败: {str(e)}")
@@ -259,50 +268,57 @@ class MultiAgentTripPlanner:
             print(f"偏好: {', '.join(request.preferences) if request.preferences else '无'}")
             print(f"{'='*60}\n")
 
+            # 读取并合并会话记忆
+            session_memory_slots = self._load_session_memory(request)
+            memory_enhanced_request = self._merge_request_with_session_memory(request, session_memory_slots)
+
             # 步骤1: 景点搜索Agent搜索景点
             print("📍 步骤1: 搜索景点...")
-            attraction_query = self._build_attraction_query(request)
+            attraction_query = self._build_attraction_query(memory_enhanced_request)
             attraction_response = self.attraction_agent.run(attraction_query)
             print(f"景点搜索结果: {attraction_response[:200]}...\n")
 
             # 步骤2: 天气查询Agent查询天气
             print("🌤️  步骤2: 查询天气...")
-            weather_query = f"请查询{request.city}的天气信息"
+            weather_query = f"请查询{memory_enhanced_request.city}的天气信息"
             weather_response = self.weather_agent.run(weather_query)
             print(f"天气查询结果: {weather_response[:200]}...\n")
 
             # 步骤3: 酒店推荐Agent搜索酒店
             print("🏨 步骤3: 搜索酒店...")
-            hotel_query = f"请搜索{request.city}的{request.accommodation}酒店"
+            hotel_query = f"请搜索{memory_enhanced_request.city}的{memory_enhanced_request.accommodation}酒店"
             hotel_response = self.hotel_agent.run(hotel_query)
             print(f"酒店搜索结果: {hotel_response[:200]}...\n")
 
             # 步骤4: 行程规划Agent整合信息生成计划
             print("📋 步骤4: 生成行程计划...")
-            compressed_context = self.context_compressor.build_context(request.conversation_history)
+            compressed_context = self.context_compressor.build_context(memory_enhanced_request.conversation_history)
             print(
-                f"上下文压缩完成: 历史轮次={len(request.conversation_history)}, "
+                f"上下文压缩完成: 历史轮次={len(memory_enhanced_request.conversation_history)}, "
                 f"保留最近轮次={len(compressed_context['recent_turns'])}"
             )
             retrieved_knowledge = []
             rag_block = ""
             if self.rag_enabled and self.rag_injector:
-                retrieved_knowledge = self.rag_injector.retrieve(request, compressed_context)
+                retrieved_knowledge = self.rag_injector.retrieve(memory_enhanced_request, compressed_context)
                 rag_block = self.rag_injector.build_prompt_block(retrieved_knowledge)
             print(f"RAG检索完成: 命中知识条目={len(retrieved_knowledge)}")
+            memory_block = self._build_memory_block(session_memory_slots)
             planner_query = self._build_planner_query(
-                request,
+                memory_enhanced_request,
                 attraction_response,
                 weather_response,
                 hotel_response,
                 compressed_context,
                 rag_block,
+                memory_block,
             )
             planner_response = self.planner_agent.run(planner_query)
             print(f"行程规划结果: {planner_response[:300]}...\n")
 
             # 解析最终计划
-            trip_plan = self._parse_response(planner_response, request)
+            trip_plan = self._parse_response(planner_response, memory_enhanced_request)
+            self._update_session_memory(memory_enhanced_request, trip_plan)
 
             print(f"{'='*60}")
             print(f"✅ 旅行计划生成完成!")
@@ -337,6 +353,7 @@ class MultiAgentTripPlanner:
         hotels: str = "",
         compressed_context: Dict[str, Any] | None = None,
         rag_block: str = "",
+        memory_block: str = "",
     ) -> str:
         """构建行程规划查询"""
         context_block = ""
@@ -373,6 +390,7 @@ class MultiAgentTripPlanner:
 {hotels}
 {context_block}
 {rag_block}
+{memory_block}
 {instruction_block}
 
 **要求:**
@@ -387,6 +405,55 @@ class MultiAgentTripPlanner:
             query += f"\n**额外要求:** {request.free_text_input}"
 
         return query
+
+    def _load_session_memory(self, request: TripRequest) -> Dict[str, Any]:
+        if not self.session_memory_enabled or not self.session_memory or not request.session_id:
+            return {}
+        slots = self.session_memory.load(request.session_id)
+        if slots:
+            print(f"🧠 已加载会话记忆: session_id={request.session_id}, keys={list(slots.keys())}")
+        return slots
+
+    def _merge_request_with_session_memory(self, request: TripRequest, slots: Dict[str, Any]) -> TripRequest:
+        if not slots:
+            return request
+        payload = request.model_dump()
+        for key in ["city", "transportation", "accommodation", "travel_days"]:
+            if not payload.get(key) and slots.get(key):
+                payload[key] = slots[key]
+        if not payload.get("preferences") and slots.get("preferences"):
+            payload["preferences"] = slots["preferences"]
+        if slots.get("conversation_history"):
+            history = payload.get("conversation_history", [])
+            payload["conversation_history"] = slots["conversation_history"] + history
+        return TripRequest(**payload)
+
+    def _build_memory_block(self, slots: Dict[str, Any]) -> str:
+        if not slots:
+            return ""
+        return (
+            "\n**短期会话记忆(Session Memory):**\n"
+            f"{json.dumps(slots, ensure_ascii=False, indent=2)}\n"
+            "请优先沿用会话中已确认的偏好与约束，除非用户本轮明确修改。\n"
+        )
+
+    def _update_session_memory(self, request: TripRequest, trip_plan: TripPlan) -> None:
+        if not self.session_memory_enabled or not self.session_memory or not request.session_id:
+            return
+        patch = {
+            "city": request.city,
+            "travel_days": request.travel_days,
+            "transportation": request.transportation,
+            "accommodation": request.accommodation,
+            "preferences": request.preferences,
+            "last_start_date": request.start_date,
+            "last_end_date": request.end_date,
+            "last_overall_suggestions": trip_plan.overall_suggestions,
+        }
+        if request.conversation_history:
+            patch["conversation_history"] = [x.model_dump() for x in request.conversation_history[-8:]]
+        updated = self.session_memory.update(request.session_id, patch)
+        print(f"🧠 会话记忆已更新: session_id={request.session_id}, keys={list(updated.keys())}")
 
     def _build_instruction_block(self, request: TripRequest, rag_block: str) -> str:
         settings = get_settings()

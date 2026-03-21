@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     # 冲突指令消解配置
     instruction_conflict_guard_enabled: bool = True
 
+    # 短期会话记忆配置
+    session_memory_enabled: bool = True
+    session_memory_ttl_minutes: int = 1440
+
     class Config:
         env_file = ".env"
         case_sensitive = False
@@ -129,4 +133,9 @@ def print_config():
         f"path={settings.rag_knowledge_path}"
     )
     print(f"冲突指令消解: enabled={settings.instruction_conflict_guard_enabled}")
+    print(
+        "短期会话记忆: "
+        f"enabled={settings.session_memory_enabled}, "
+        f"ttl_minutes={settings.session_memory_ttl_minutes}"
+    )
     print(f"日志级别: {settings.log_level}")
