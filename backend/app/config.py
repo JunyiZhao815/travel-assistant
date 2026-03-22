@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     session_memory_enabled: bool = True
     session_memory_ttl_minutes: int = 1440
 
+    # 长期用户画像配置
+    user_profile_enabled: bool = True
+
     class Config:
         env_file = ".env"
         case_sensitive = False
@@ -138,4 +141,5 @@ def print_config():
         f"enabled={settings.session_memory_enabled}, "
         f"ttl_minutes={settings.session_memory_ttl_minutes}"
     )
+    print(f"长期用户画像: enabled={settings.user_profile_enabled}")
     print(f"日志级别: {settings.log_level}")

@@ -9,7 +9,7 @@ from ..models.schemas import TripRequest, TripPlan, DayPlan, Attraction, Meal, W
 from ..config import get_settings
 from ..prompting import ContextCompressor, InstructionResolver
 from ..retrieval import RAGInjector
-from ..memory import get_session_memory_service
+from ..memory import get_session_memory_service, get_user_profile_service
 
 # ============ Agent提示词 ============
 
@@ -179,6 +179,8 @@ class MultiAgentTripPlanner:
             self.session_memory = get_session_memory_service(
                 ttl_minutes=settings.session_memory_ttl_minutes
             ) if self.session_memory_enabled else None
+            self.user_profile_enabled = settings.user_profile_enabled
+            self.user_profile = get_user_profile_service() if self.user_profile_enabled else None
 
             # 创建共享的MCP工具(只创建一次)
             print("  - 创建共享MCP工具...")
@@ -242,6 +244,7 @@ class MultiAgentTripPlanner:
                 f"   短期会话记忆: enabled={settings.session_memory_enabled}, "
                 f"ttl_minutes={settings.session_memory_ttl_minutes}"
             )
+            print(f"   长期用户画像: enabled={settings.user_profile_enabled}")
 
         except Exception as e:
             print(f"❌ 多智能体系统初始化失败: {str(e)}")
@@ -268,9 +271,13 @@ class MultiAgentTripPlanner:
             print(f"偏好: {', '.join(request.preferences) if request.preferences else '无'}")
             print(f"{'='*60}\n")
 
+            # 读取并合并长期用户画像
+            long_term_profile = self._load_user_profile(request)
+            profile_enhanced_request = self._merge_request_with_profile(request, long_term_profile)
+
             # 读取并合并会话记忆
-            session_memory_slots = self._load_session_memory(request)
-            memory_enhanced_request = self._merge_request_with_session_memory(request, session_memory_slots)
+            session_memory_slots = self._load_session_memory(profile_enhanced_request)
+            memory_enhanced_request = self._merge_request_with_session_memory(profile_enhanced_request, session_memory_slots)
 
             # 步骤1: 景点搜索Agent搜索景点
             print("📍 步骤1: 搜索景点...")
@@ -304,6 +311,7 @@ class MultiAgentTripPlanner:
                 rag_block = self.rag_injector.build_prompt_block(retrieved_knowledge)
             print(f"RAG检索完成: 命中知识条目={len(retrieved_knowledge)}")
             memory_block = self._build_memory_block(session_memory_slots)
+            profile_block = self._build_profile_block(long_term_profile)
             planner_query = self._build_planner_query(
                 memory_enhanced_request,
                 attraction_response,
@@ -312,6 +320,7 @@ class MultiAgentTripPlanner:
                 compressed_context,
                 rag_block,
                 memory_block,
+                profile_block,
             )
             planner_response = self.planner_agent.run(planner_query)
             print(f"行程规划结果: {planner_response[:300]}...\n")
@@ -319,6 +328,7 @@ class MultiAgentTripPlanner:
             # 解析最终计划
             trip_plan = self._parse_response(planner_response, memory_enhanced_request)
             self._update_session_memory(memory_enhanced_request, trip_plan)
+            self._update_user_profile(memory_enhanced_request)
 
             print(f"{'='*60}")
             print(f"✅ 旅行计划生成完成!")
@@ -354,6 +364,7 @@ class MultiAgentTripPlanner:
         compressed_context: Dict[str, Any] | None = None,
         rag_block: str = "",
         memory_block: str = "",
+        profile_block: str = "",
     ) -> str:
         """构建行程规划查询"""
         context_block = ""
@@ -391,6 +402,7 @@ class MultiAgentTripPlanner:
 {context_block}
 {rag_block}
 {memory_block}
+{profile_block}
 {instruction_block}
 
 **要求:**
@@ -405,6 +417,30 @@ class MultiAgentTripPlanner:
             query += f"\n**额外要求:** {request.free_text_input}"
 
         return query
+
+    def _load_user_profile(self, request: TripRequest) -> Dict[str, Any]:
+        if not self.user_profile_enabled or not self.user_profile or not request.user_id:
+            return {}
+        profile = self.user_profile.load(request.user_id)
+        if profile:
+            print(f"👤 已加载长期画像: user_id={request.user_id}, plan_count={profile.get('plan_count', 0)}")
+        return profile
+
+    def _merge_request_with_profile(self, request: TripRequest, profile: Dict[str, Any]) -> TripRequest:
+        if not profile:
+            return request
+        payload = request.model_dump()
+        if not payload.get("preferences"):
+            payload["preferences"] = profile.get("top_preferences", [])
+        if not payload.get("free_text_input"):
+            hints = []
+            if profile.get("preferred_transportation"):
+                hints.append(f"用户常用交通方式: {profile['preferred_transportation']}")
+            if profile.get("preferred_accommodation"):
+                hints.append(f"用户常选住宿: {profile['preferred_accommodation']}")
+            if hints:
+                payload["free_text_input"] = "；".join(hints)
+        return TripRequest(**payload)
 
     def _load_session_memory(self, request: TripRequest) -> Dict[str, Any]:
         if not self.session_memory_enabled or not self.session_memory or not request.session_id:
@@ -437,6 +473,15 @@ class MultiAgentTripPlanner:
             "请优先沿用会话中已确认的偏好与约束，除非用户本轮明确修改。\n"
         )
 
+    def _build_profile_block(self, profile: Dict[str, Any]) -> str:
+        if not profile:
+            return ""
+        return (
+            "\n**长期用户画像(Long-term Profile):**\n"
+            f"{json.dumps(profile, ensure_ascii=False, indent=2)}\n"
+            "请在不违背用户本轮明确要求的前提下，参考长期偏好做个性化规划。\n"
+        )
+
     def _update_session_memory(self, request: TripRequest, trip_plan: TripPlan) -> None:
         if not self.session_memory_enabled or not self.session_memory or not request.session_id:
             return
@@ -454,6 +499,22 @@ class MultiAgentTripPlanner:
             patch["conversation_history"] = [x.model_dump() for x in request.conversation_history[-8:]]
         updated = self.session_memory.update(request.session_id, patch)
         print(f"🧠 会话记忆已更新: session_id={request.session_id}, keys={list(updated.keys())}")
+
+    def _update_user_profile(self, request: TripRequest) -> None:
+        if not self.user_profile_enabled or not self.user_profile or not request.user_id:
+            return
+        patch = {
+            "city": request.city,
+            "travel_days": request.travel_days,
+            "transportation": request.transportation,
+            "accommodation": request.accommodation,
+            "preferences": request.preferences,
+        }
+        profile = self.user_profile.update(request.user_id, patch)
+        print(
+            f"👤 长期画像已更新: user_id={request.user_id}, "
+            f"top_preferences={profile.get('top_preferences', [])}"
+        )
 
     def _build_instruction_block(self, request: TripRequest, rag_block: str) -> str:
         settings = get_settings()
