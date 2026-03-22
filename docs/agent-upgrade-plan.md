@@ -238,3 +238,104 @@
 6. 基础指标埋点（耗时、调用成功率、解析成功率）
 
 完成以上即可形成较强面试叙事，再迭代长期画像与知识版本化。
+
+---
+
+## 9. 第二阶段冲刺计划（2周：评测 + 性能 + 可观测）
+
+目标：把“功能可用”升级为“效果可证、性能可控、线上可运营”。
+
+### 9.1 Week 1：RAG效果验证（质量闭环）
+
+Day 1
+- 新增 `backend/app/evals/datasets/rag_eval_cases.jsonl`
+- 收集 50 条评测样本（城市、预算、天气、多轮、冲突指令）
+- 定义标签字段：`expected_facts`, `must_include`, `must_not_include`
+
+Day 2
+- 新增 `backend/app/evals/rag_eval_runner.py`
+- 实现离线评测运行器（批量调用检索与生成）
+- 输出基础指标：`recall@k`, `context_precision`, `json_parse_rate`
+
+Day 3
+- 新增 `backend/app/evals/faithfulness_judge.py`
+- 增加“答案忠实度”检查（答案是否被检索证据支持）
+- 产出日报表（csv/json）
+
+Day 4
+- 参数网格搜索：`top_k / retrieval_mode / keyword_weight / vector_weight`
+- 记录每组参数在评测集上的指标与耗时
+- 选出默认参数基线
+
+Day 5
+- 固化回归门槛（例如：`json_parse_rate >= 95%`, `recall@3 >= 70%`）
+- 在本地脚本形成 `make eval` 或等价命令
+
+Week 1 验收标准
+- 有可复现实验集和评测脚本
+- 可稳定输出 3-5 个质量指标
+- 有一套经过评测选出的默认检索参数
+
+### 9.2 Week 2：查询速度与可观测（工程闭环）
+
+Day 6
+- 新增 `backend/app/services/cache_service.py`
+- 引入检索缓存（query + session 维度，TTL可配置）
+- 指标：缓存命中率、平均检索耗时
+
+Day 7
+- 在 `trip_planner_agent.py` 中并发化非依赖步骤（天气/酒店/景点）
+- 控制并发超时与失败降级
+- 指标：`P50`, `P95`, 超时率
+
+Day 8
+- 新增 `backend/app/services/telemetry_service.py`
+- 结构化打点：`request_id/session_id/user_id/stage/latency/token_estimate`
+- 每个阶段落 trace：compress/retrieve/tool_call/generate/parse
+
+Day 9
+- 新增 `backend/app/api/routes/debug.py`
+- 提供 `rag-debug` 接口返回：命中知识、过滤原因、版本选择结果
+- 提供 `metrics-debug` 接口返回当前进程窗口指标
+
+Day 10
+- 压测与回归（`50/100/200` 并发等级）
+- 产出性能报告：吞吐、错误率、P95、缓存收益
+- 调整默认超时、重试、缓存TTL
+
+Week 2 验收标准
+- 有可查看的链路级日志与指标
+- P95 与错误率有优化结果（对比改造前基线）
+- 可通过 debug 接口解释“为什么命中这条知识”
+
+### 9.3 建议新增文件清单（第二阶段）
+
+- `backend/app/evals/datasets/rag_eval_cases.jsonl`
+- `backend/app/evals/rag_eval_runner.py`
+- `backend/app/evals/faithfulness_judge.py`
+- `backend/app/services/cache_service.py`
+- `backend/app/services/telemetry_service.py`
+- `backend/app/api/routes/debug.py`
+- `backend/app/evals/reports/`（评测输出目录）
+
+### 9.4 面试可讲的交付成果
+
+1. 质量侧
+- “从主观效果”变成“可量化评测”：recall、faithfulness、json parse rate。
+
+2. 性能侧
+- “从可用”变成“可扩展”：P95、缓存命中率、并发吞吐。
+
+3. 工程侧
+- “从黑盒”变成“可解释”：debug接口、版本过滤原因、冲突裁决日志。
+
+### 9.5 风险与规避
+
+1. 评测集偏差
+- 规避：按场景分桶采样，保持线上请求分布一致性。
+
+2. 参数过拟合
+- 规避：保留独立验证集，不在同一批数据上反复调参后报告结果。
+
+3. 过度优化时延导致质量下降
+- 规避：以“质量门槛优先，性能在门槛内优化”为原则。
