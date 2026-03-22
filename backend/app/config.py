@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     pgvector_dsn: str = ""
     pgvector_table: str = "rag_knowledge_vectors"
     pgvector_dim: int = 256
+    rag_versioning_enabled: bool = True
+    rag_keep_latest_only: bool = True
+    rag_expiration_enabled: bool = True
+    rag_default_ttl_days: int = 30
 
     # 冲突指令消解配置
     instruction_conflict_guard_enabled: bool = True
@@ -146,7 +150,11 @@ def print_config():
         f"kw_w={settings.rag_keyword_weight}, "
         f"vec_w={settings.rag_vector_weight}, "
         f"conf_w={settings.rag_confidence_weight}, "
-        f"vector_backend={settings.rag_vector_backend}"
+        f"vector_backend={settings.rag_vector_backend}, "
+        f"versioning={settings.rag_versioning_enabled}, "
+        f"latest_only={settings.rag_keep_latest_only}, "
+        f"expiration={settings.rag_expiration_enabled}, "
+        f"default_ttl_days={settings.rag_default_ttl_days}"
     )
     if settings.rag_vector_backend == "pgvector":
         print(

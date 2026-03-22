@@ -23,6 +23,10 @@ class RAGInjector:
         pgvector_dsn: str = "",
         pgvector_table: str = "rag_knowledge_vectors",
         pgvector_dim: int = 256,
+        versioning_enabled: bool = True,
+        keep_latest_only: bool = True,
+        expiration_enabled: bool = True,
+        default_ttl_days: int = 30,
     ):
         self.store = KnowledgeStore(
             knowledge_path=knowledge_path,
@@ -30,6 +34,10 @@ class RAGInjector:
             pgvector_dsn=pgvector_dsn,
             pgvector_table=pgvector_table,
             pgvector_dim=pgvector_dim,
+            versioning_enabled=versioning_enabled,
+            keep_latest_only=keep_latest_only,
+            expiration_enabled=expiration_enabled,
+            default_ttl_days=default_ttl_days,
         )
         self.top_k = max(1, top_k)
         self.retrieval_mode = retrieval_mode
@@ -59,6 +67,7 @@ class RAGInjector:
             source = item.get("source", "unknown")
             version = item.get("version", "v1")
             timestamp = item.get("timestamp", "")
+            active = item.get("is_active", True)
             score = item.get("score", 0)
             keyword_score = item.get("keyword_score", 0)
             vector_score = item.get("vector_score", 0)
@@ -68,6 +77,7 @@ class RAGInjector:
                 f"   - source: {source}\n"
                 f"   - version: {version}\n"
                 f"   - timestamp: {timestamp}\n"
+                f"   - is_active: {active}\n"
                 f"   - score: {score}\n"
                 f"   - keyword_score: {keyword_score}\n"
                 f"   - vector_score: {vector_score}"

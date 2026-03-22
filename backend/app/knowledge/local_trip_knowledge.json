@@ -1,13 +1,29 @@
 [
   {
-    "id": "trip_rule_001",
+    "id": "trip_rule_001_v1",
+    "knowledge_key": "trip_rule_001",
     "title": "行程密度控制",
     "content": "3天行程建议每天2-3个核心景点，避免跨城奔波。单个景点建议预留90-180分钟。",
     "tags": ["行程", "节奏", "景点安排"],
     "source": "ops_playbook",
     "version": "2026.03.01",
     "timestamp": "2026-03-01",
+    "valid_from": "2026-03-01",
+    "valid_to": "2026-12-31",
     "confidence": 0.95
+  },
+  {
+    "id": "trip_rule_001_v2",
+    "knowledge_key": "trip_rule_001",
+    "title": "行程密度控制",
+    "content": "3天行程建议每天2-3个景点，单日总移动时间尽量控制在2小时内，减少跨区折返。",
+    "tags": ["行程", "节奏", "景点安排", "移动时间"],
+    "source": "ops_playbook",
+    "version": "2026.03.10",
+    "timestamp": "2026-03-10",
+    "valid_from": "2026-03-10",
+    "valid_to": "2026-12-31",
+    "confidence": 0.96
   },
   {
     "id": "trip_rule_002",
@@ -17,6 +33,7 @@
     "source": "finance_guideline",
     "version": "2026.02.20",
     "timestamp": "2026-02-20",
+    "valid_from": "2026-02-20",
     "confidence": 0.9
   },
   {
@@ -27,6 +44,8 @@
     "source": "travel_rulebook",
     "version": "2026.01.15",
     "timestamp": "2026-01-15",
+    "time_sensitive": true,
+    "ttl_days": 365,
     "confidence": 0.92
   },
   {
@@ -37,6 +56,7 @@
     "source": "routing_guideline",
     "version": "2026.02.01",
     "timestamp": "2026-02-01",
+    "valid_from": "2026-02-01",
     "confidence": 0.88
   },
   {
@@ -47,6 +67,20 @@
     "source": "hotel_policy",
     "version": "2026.02.10",
     "timestamp": "2026-02-10",
+    "valid_from": "2026-02-10",
     "confidence": 0.87
+  },
+  {
+    "id": "trip_rule_999_expired",
+    "knowledge_key": "trip_rule_999",
+    "title": "已过期示例规则",
+    "content": "该规则用于演示过期过滤，不应出现在检索结果中。",
+    "tags": ["示例", "过期"],
+    "source": "demo",
+    "version": "2025.01.01",
+    "timestamp": "2025-01-01",
+    "valid_from": "2025-01-01",
+    "valid_to": "2025-12-31",
+    "confidence": 0.5
   }
 ]

@@ -7,6 +7,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from ..knowledge.expiration_policy import ExpirationPolicy
+from ..knowledge.knowledge_registry import KnowledgeRegistry
 from .pgvector_store import PgVectorStore
 from .vector_store import VectorStore
 
@@ -21,9 +23,20 @@ class KnowledgeStore:
         pgvector_dsn: str = "",
         pgvector_table: str = "rag_knowledge_vectors",
         pgvector_dim: int = 256,
+        versioning_enabled: bool = True,
+        keep_latest_only: bool = True,
+        expiration_enabled: bool = True,
+        default_ttl_days: int = 30,
     ):
         self.knowledge_path = self._resolve_path(knowledge_path)
-        self.items = self._load_items()
+        raw_items = self._load_items()
+        self.registry = KnowledgeRegistry(enabled=versioning_enabled, keep_latest_only=keep_latest_only)
+        self.expiration_policy = ExpirationPolicy(
+            enabled=expiration_enabled, default_ttl_days=default_ttl_days
+        )
+        versioned_items = self.registry.process(raw_items)
+        self.items = [self.expiration_policy.annotate(x) for x in versioned_items]
+        self.items = [x for x in self.items if x.get("is_active", True)]
         self.vector_backend = vector_backend
         self.vector_store = VectorStore(self.items, tokenize=self._tokenize_list) if self.items else None
         self.pgvector_store = None

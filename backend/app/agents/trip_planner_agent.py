@@ -182,6 +182,10 @@ class MultiAgentTripPlanner:
                 pgvector_dsn=settings.pgvector_dsn,
                 pgvector_table=settings.pgvector_table,
                 pgvector_dim=settings.pgvector_dim,
+                versioning_enabled=settings.rag_versioning_enabled,
+                keep_latest_only=settings.rag_keep_latest_only,
+                expiration_enabled=settings.rag_expiration_enabled,
+                default_ttl_days=settings.rag_default_ttl_days,
             ) if self.rag_enabled else None
             self.session_memory_enabled = settings.session_memory_enabled
             self.session_memory = get_session_memory_service(
