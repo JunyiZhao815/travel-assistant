@@ -11,13 +11,42 @@ from .knowledge_store import KnowledgeStore
 class RAGInjector:
     """检索知识并格式化为可注入Prompt的文本块。"""
 
-    def __init__(self, knowledge_path: str, top_k: int = 3):
-        self.store = KnowledgeStore(knowledge_path=knowledge_path)
+    def __init__(
+        self,
+        knowledge_path: str,
+        top_k: int = 3,
+        retrieval_mode: str = "hybrid",
+        keyword_weight: float = 0.4,
+        vector_weight: float = 0.5,
+        confidence_weight: float = 0.1,
+        vector_backend: str = "local",
+        pgvector_dsn: str = "",
+        pgvector_table: str = "rag_knowledge_vectors",
+        pgvector_dim: int = 256,
+    ):
+        self.store = KnowledgeStore(
+            knowledge_path=knowledge_path,
+            vector_backend=vector_backend,
+            pgvector_dsn=pgvector_dsn,
+            pgvector_table=pgvector_table,
+            pgvector_dim=pgvector_dim,
+        )
         self.top_k = max(1, top_k)
+        self.retrieval_mode = retrieval_mode
+        self.keyword_weight = keyword_weight
+        self.vector_weight = vector_weight
+        self.confidence_weight = confidence_weight
 
     def retrieve(self, request: TripRequest, compressed_context: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         query = self._build_query(request, compressed_context)
-        return self.store.search(query=query, top_k=self.top_k)
+        return self.store.search(
+            query=query,
+            top_k=self.top_k,
+            mode=self.retrieval_mode,
+            keyword_weight=self.keyword_weight,
+            vector_weight=self.vector_weight,
+            confidence_weight=self.confidence_weight,
+        )
 
     def build_prompt_block(self, retrieved_items: list[dict[str, Any]]) -> str:
         if not retrieved_items:
@@ -31,13 +60,17 @@ class RAGInjector:
             version = item.get("version", "v1")
             timestamp = item.get("timestamp", "")
             score = item.get("score", 0)
+            keyword_score = item.get("keyword_score", 0)
+            vector_score = item.get("vector_score", 0)
             lines.append(
                 f"{idx}. {title}\n"
                 f"   - content: {content}\n"
                 f"   - source: {source}\n"
                 f"   - version: {version}\n"
                 f"   - timestamp: {timestamp}\n"
-                f"   - score: {score}"
+                f"   - score: {score}\n"
+                f"   - keyword_score: {keyword_score}\n"
+                f"   - vector_score: {vector_score}"
             )
         lines.append("请优先参考以上知识片段；若知识不足请明确说明不确定，不要编造事实。")
         return "\n".join(lines)

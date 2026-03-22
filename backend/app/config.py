@@ -53,6 +53,14 @@ class Settings(BaseSettings):
     rag_enabled: bool = True
     rag_top_k: int = 3
     rag_knowledge_path: str = "knowledge/local_trip_knowledge.json"
+    rag_retrieval_mode: str = "hybrid"  # keyword / vector / hybrid
+    rag_keyword_weight: float = 0.4
+    rag_vector_weight: float = 0.5
+    rag_confidence_weight: float = 0.1
+    rag_vector_backend: str = "local"  # local / pgvector
+    pgvector_dsn: str = ""
+    pgvector_table: str = "rag_knowledge_vectors"
+    pgvector_dim: int = 256
 
     # 冲突指令消解配置
     instruction_conflict_guard_enabled: bool = True
@@ -133,8 +141,20 @@ def print_config():
         "RAG配置: "
         f"enabled={settings.rag_enabled}, "
         f"top_k={settings.rag_top_k}, "
-        f"path={settings.rag_knowledge_path}"
+        f"path={settings.rag_knowledge_path}, "
+        f"mode={settings.rag_retrieval_mode}, "
+        f"kw_w={settings.rag_keyword_weight}, "
+        f"vec_w={settings.rag_vector_weight}, "
+        f"conf_w={settings.rag_confidence_weight}, "
+        f"vector_backend={settings.rag_vector_backend}"
     )
+    if settings.rag_vector_backend == "pgvector":
+        print(
+            "pgvector: "
+            f"table={settings.pgvector_table}, "
+            f"dim={settings.pgvector_dim}, "
+            f"dsn={'已配置' if settings.pgvector_dsn else '未配置'}"
+        )
     print(f"冲突指令消解: enabled={settings.instruction_conflict_guard_enabled}")
     print(
         "短期会话记忆: "

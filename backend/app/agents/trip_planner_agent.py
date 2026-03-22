@@ -174,6 +174,14 @@ class MultiAgentTripPlanner:
             self.rag_injector = RAGInjector(
                 knowledge_path=settings.rag_knowledge_path,
                 top_k=settings.rag_top_k,
+                retrieval_mode=settings.rag_retrieval_mode,
+                keyword_weight=settings.rag_keyword_weight,
+                vector_weight=settings.rag_vector_weight,
+                confidence_weight=settings.rag_confidence_weight,
+                vector_backend=settings.rag_vector_backend,
+                pgvector_dsn=settings.pgvector_dsn,
+                pgvector_table=settings.pgvector_table,
+                pgvector_dim=settings.pgvector_dim,
             ) if self.rag_enabled else None
             self.session_memory_enabled = settings.session_memory_enabled
             self.session_memory = get_session_memory_service(
@@ -237,7 +245,8 @@ class MultiAgentTripPlanner:
             )
             print(
                 f"   RAG: enabled={settings.rag_enabled}, "
-                f"top_k={settings.rag_top_k}, path={settings.rag_knowledge_path}"
+                f"top_k={settings.rag_top_k}, path={settings.rag_knowledge_path}, "
+                f"mode={settings.rag_retrieval_mode}, vector_backend={settings.rag_vector_backend}"
             )
             print(f"   冲突指令消解: enabled={settings.instruction_conflict_guard_enabled}")
             print(
